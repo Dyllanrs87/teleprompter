@@ -102,6 +102,22 @@
     border: 1px solid var(--line); padding: 8px 16px; border-radius: 10px; font-size: 16px; z-index: 6; transition: opacity .25s; opacity: 0; pointer-events: none; }
   #toast.show { opacity: 1; }
 
+  /* ---------- Câmera ao fundo + gravação ---------- */
+  #cam { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); background: #000; }
+  #cam.back { transform: none; }                 /* câmera traseira não fica espelhada */
+  #camShade { position: absolute; inset: 0; background: rgba(0,0,0,.45); pointer-events: none; }
+  #prompter.cam .fade { display: none; }
+  #prompter.cam #text { text-shadow: 0 2px 6px rgba(0,0,0,.95), 0 0 2px rgba(0,0,0,.9); }
+  #recInd { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); z-index: 6;
+    background: rgba(220,38,38,.92); color: #fff; padding: 4px 10px; border-radius: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #hud #h-rec { color: #ef4444; font-size: 22px; }
+  #savePanel { position: absolute; inset: 0; background: rgba(0,0,0,.85); z-index: 7; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #savePanel .box { background: var(--panel); color: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px; width: min(480px, 100%);
+    display: flex; flex-direction: column; gap: 12px; }
+  #savePanel video { width: 100%; max-height: 50vh; background: #000; border-radius: 8px; }
+  #savePanel .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  #savePanel p { margin: 0; color: var(--muted); font-size: 14px; }
+
   @media (max-width: 600px) {
     #hud .readout { display: none; }
     #hud button { min-width: 40px; padding: 0 6px; }
@@ -173,6 +189,7 @@ Dicas:
       <label><input type="checkbox" id="mirrorV"> Inverter vertical</label>
       <label><input type="checkbox" id="showGuide"> Linha de leitura</label>
       <label><input type="checkbox" id="fullscreen"> Tela cheia ao iniciar</label>
+      <label id="f-camera"><input type="checkbox" id="camera"> 📷 Câmera ao fundo (gravar vídeo)</label>
     </div>
   </section>
 
@@ -196,6 +213,9 @@ Dicas:
     <kbd>Esc</kbd> sair.<br>
     <b>No celular:</b> toque no texto para pausar/continuar, arraste para rolar manualmente.
     O roteiro e as configurações ficam salvos automaticamente neste navegador.<br>
+    <b>Gravar com a câmera:</b> marque <i>📷 Câmera ao fundo</i>, inicie a leitura e toque em ⏺ para gravar (⏹ para parar e salvar o vídeo).
+    Coloque a <i>linha de leitura</i> perto do topo (15–25%) para seus olhos ficarem perto da lente. 🔄 troca entre câmera frontal e traseira.
+    O <i>espelhar</i> é só para teleprompter com vidro; com a câmera do celular, deixe desligado.<br>
     <b>Modos de voz:</b> o navegador pede permissão para usar o microfone.
     <i>Rola enquanto eu falo</i> anda no ritmo da velocidade escolhida enquanto há voz e para no silêncio (ajuste a sensibilidade olhando o medidor 🎤).
     <i>Acompanha as palavras</i> reconhece sua fala e mantém a próxima palavra na linha de leitura; precisa de internet e funciona no Chrome, Edge, Safari e Android.
@@ -205,6 +225,8 @@ Dicas:
 
 <!-- ================= PROMPTER ================= -->
 <div id="prompter" class="hidden">
+  <video id="cam" class="hidden" playsinline muted autoplay></video>
+  <div id="camShade" class="hidden"></div>
   <div id="progress"></div>
   <div id="viewport"><div id="text"></div></div>
   <div class="fade top"></div>
@@ -212,6 +234,18 @@ Dicas:
   <div id="guide"></div>
   <div id="countdown" class="hidden"></div>
   <div id="toast"></div>
+  <div id="recInd" class="hidden">● 0:00</div>
+  <div id="savePanel" class="hidden">
+    <div class="box">
+      <p>Vídeo gravado · <span id="recLen">0:00</span></p>
+      <video id="preview" playsinline controls></video>
+      <div class="row">
+        <button class="btn primary" id="saveVid">💾 Salvar vídeo</button>
+        <button class="btn" id="discardVid">Descartar e voltar</button>
+      </div>
+      <p>No iPhone, toque em <b>Salvar vídeo</b> e escolha <b>Salvar Vídeo</b> para mandar para o app Fotos.</p>
+    </div>
+  </div>
   <div id="hud">
     <button id="h-exit" title="Sair (Esc)">✕</button>
     <button id="h-restart" title="Início (Home)">⏮</button>
@@ -224,6 +258,8 @@ Dicas:
     <button id="h-bigger" title="Fonte maior (+)">A+</button>
     <button id="h-mirror" title="Espelhar (M)">⇋</button>
     <button id="h-full" title="Tela cheia (F)">⛶</button>
+    <button id="h-flip" class="hidden" title="Trocar câmera">🔄</button>
+    <button id="h-rec" class="hidden" title="Gravar (R)">⏺</button>
     <span id="mic" class="hidden" title="Microfone"><span class="ico">🎤</span><span class="meter"><i id="micLevel"></i><b id="micThr"></b></span></span>
     <span class="readout">Vel <b id="r-speed">5</b> · <b id="r-time">0:00</b> restante</span>
   </div>
@@ -238,7 +274,7 @@ Dicas:
     script: '', speed: 5, size: window.innerWidth < 600 ? 34 : 56, width: window.innerWidth < 600 ? 92 : 80, lh: 1.45, guidePos: 33,
     countdown: 3, theme: 'dark', align: 'left',
     mirrorH: false, mirrorV: false, showGuide: true, fullscreen: true,
-    mode: 'manual', sensitivity: 60, lang: 'pt-BR'
+    mode: 'manual', sensitivity: 60, lang: 'pt-BR', camera: false
   };
   const themes = {
     dark:   { bg: '#000', fg: '#fff' },
@@ -261,7 +297,7 @@ Dicas:
     script: $('script'), speed: $('speed'), size: $('size'), width: $('width'), lh: $('lh'),
     guidePos: $('guidePos'), countdown: $('countdownSel'), theme: $('theme'), align: $('align'),
     mirrorH: $('mirrorH'), mirrorV: $('mirrorV'), showGuide: $('showGuide'), fullscreen: $('fullscreen'),
-    mode: $('mode'), sensitivity: $('sensitivity'), lang: $('lang')
+    mode: $('mode'), sensitivity: $('sensitivity'), lang: $('lang'), camera: $('camera')
   };
   const prompter = $('prompter'), viewport = $('viewport'), text = $('text'), hud = $('hud');
 
@@ -280,7 +316,12 @@ Dicas:
     root.setProperty('--guide-pos', s.guidePos + '%');
     const th = themes[s.theme] || themes.dark;
     prompter.style.setProperty('--bg', th.bg);
-    prompter.style.color = th.fg;
+    const camOn = s.camera && !inArtifact;
+    prompter.style.setProperty('--bg', camOn ? 'transparent' : th.bg);
+    prompter.style.color = camOn && s.theme === 'light' ? '#fff' : th.fg;   // sobre o vídeo, texto claro
+    prompter.classList.toggle('cam', camOn);
+    ['cam', 'camShade', 'h-rec', 'h-flip'].forEach(id => $(id).classList.toggle('hidden', !camOn));
+    $('f-camera').classList.toggle('hidden', inArtifact);
     text.className = 'align-' + s.align;
     prompter.classList.toggle('mirror-h', s.mirrorH);
     prompter.classList.toggle('mirror-v', s.mirrorV);
@@ -390,15 +431,22 @@ Dicas:
 
   // ---------- Voz: medidor de volume ----------
   let audioCtx = null, analyser = null, micStream = null, levelBuf = null, lastVoice = 0;
-  async function startMic() {
+  // O AudioContext precisa nascer dentro do clique (exigência do iOS), antes de qualquer await
+  function primeAudio() {
+    if (s.mode === 'volume' && !audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume().catch(() => {}); } catch (e) {}
+    }
+  }
+  // stream: reaproveita o áudio da câmera, se houver (no iPhone, abrir o microfone duas vezes dá conflito)
+  async function startMic(stream) {
     if (analyser) return true;
     try {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();   // criado no clique (exigência do iOS)
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!stream) { micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); stream = micStream; }
       await audioCtx.resume();
       analyser = audioCtx.createAnalyser();
       analyser.fftSize = 1024;
-      audioCtx.createMediaStreamSource(micStream).connect(analyser);
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
       levelBuf = new Float32Array(analyser.fftSize);
       return true;
     } catch (e) {
@@ -539,12 +587,127 @@ Dicas:
     rec = null;
   }
 
+  // ---------- Câmera e gravação ----------
+  let camStream = null, facing = 'user', recorder = null, chunks = [], recBlob = null, recUrl = '';
+  let recStart = 0, recLen = 0, recTimer = 0, recordPending = false, discardRec = false;
+
+  function stopCameraTracks() {
+    try { camStream && camStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    camStream = null;
+    $('cam').srcObject = null;
+  }
+  async function startCamera() {
+    stopCameraTracks();
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: { echoCancellation: true, noiseSuppression: true }
+      });
+    } catch (e) {
+      toast('Não foi possível abrir a câmera: verifique a permissão do navegador');
+      return false;
+    }
+    const v = $('cam');
+    v.srcObject = camStream;
+    v.classList.toggle('back', facing !== 'user');
+    v.play().catch(() => {});
+    return true;
+  }
+
+  function pickMime() {
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+    return ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+  }
+  function startRecording() {
+    if (!camStream) { toast('A câmera não está aberta'); return; }
+    if (!window.MediaRecorder) { toast('Este navegador não grava vídeo'); return; }
+    chunks = []; discardRec = false;
+    const mime = pickMime();
+    try { recorder = new MediaRecorder(camStream, mime ? { mimeType: mime } : undefined); }
+    catch (e) { toast('Este navegador não grava vídeo'); return; }
+    recorder.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      if (discardRec || !chunks.length) return;
+      recBlob = new Blob(chunks, { type: recorder.mimeType || mime || 'video/mp4' });
+      showSavePanel();
+    };
+    recorder.start(1000);
+    recStart = performance.now();
+    $('recInd').textContent = '● 0:00';
+    $('recInd').classList.remove('hidden');
+    $('h-rec').textContent = '⏹';
+    recTimer = setInterval(() => { $('recInd').textContent = '● ' + fmtTime((performance.now() - recStart) / 1000); }, 500);
+  }
+  function stopRecording(discard) {
+    recordPending = false;
+    if (!recorder || recorder.state === 'inactive') return;
+    discardRec = !!discard;
+    recLen = (performance.now() - recStart) / 1000;
+    try { recorder.stop(); } catch (e) {}
+    clearInterval(recTimer);
+    $('recInd').classList.add('hidden');
+    $('h-rec').textContent = '⏺';
+  }
+  const isRecording = () => !!recorder && recorder.state === 'recording';
+
+  function toggleRecord() {
+    if (isRecording()) { stopRecording(false); setPlaying(false); return; }
+    if (!camStream) { toast('A câmera não está aberta'); return; }
+    if (playing) startRecording();
+    else { recordPending = true; if (!countdownTimer) startWithCountdown(); }   // grava junto com o início da rolagem
+  }
+
+  function showSavePanel() {
+    if (recUrl) URL.revokeObjectURL(recUrl);
+    recUrl = URL.createObjectURL(recBlob);
+    $('preview').src = recUrl;
+    $('recLen').textContent = fmtTime(recLen);
+    $('savePanel').classList.remove('hidden');
+    showHud();
+  }
+  function closeSavePanel() {
+    $('savePanel').classList.add('hidden');
+    $('preview').removeAttribute('src');
+    if (recUrl) URL.revokeObjectURL(recUrl);
+    recUrl = ''; recBlob = null;
+  }
+  async function saveVideo() {
+    if (!recBlob) return;
+    const ext = recBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const name = `gravacao-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.${ext}`;
+    const file = new File([recBlob], name, { type: recBlob.type });
+    // iPhone/Android: folha de compartilhamento → "Salvar Vídeo" manda para a galeria
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = recUrl; a.download = name; a.click();
+  }
+
+  async function flipCamera() {
+    if (isRecording()) { toast('Pare a gravação para trocar de câmera'); return; }
+    facing = facing === 'user' ? 'environment' : 'user';
+    const vol = s.mode === 'volume';
+    if (vol) { stopMic(); primeAudio(); }
+    const ok = await startCamera();
+    if (vol) startMic(ok ? camStream : null);
+  }
+
   function startVoice() {
+    primeAudio();
+    if (s.camera && !inArtifact) {
+      if (s.mode === 'words') toast('Dica: no iPhone, gravar com "acompanha as palavras" pode falhar; prefira "rola enquanto eu falo"');
+      startCamera().then(ok => { if (s.mode === 'volume') startMic(ok ? camStream : null); });
+      if (s.mode === 'words') startRecognition();
+      return;
+    }
     // Só um dos dois usa o microfone: no Android, abrir os dois ao mesmo tempo pode travar o reconhecimento
     if (s.mode === 'volume') startMic();
     if (s.mode === 'words') startRecognition();
   }
-  function stopVoice() { stopRecognition(); stopMic(); }
+  function stopVoice() { stopRecording(true); closeSavePanel(); stopRecognition(); stopMic(); stopCameraTracks(); }
 
   function setPlaying(p) {
     if (p === playing) return;
@@ -559,6 +722,7 @@ Dicas:
       raf = requestAnimationFrame(tick);
       requestWakeLock();
       scheduleHudHide();
+      if (recordPending) { recordPending = false; startRecording(); }
     } else {
       cancelAnimationFrame(raf);
       showHud();
@@ -566,7 +730,7 @@ Dicas:
   }
 
   function togglePlay() {
-    if (countdownTimer) { cancelCountdown(); return; }
+    if (countdownTimer) { cancelCountdown(); recordPending = false; return; }
     if (playing) setPlaying(false);
     else {
       if (s.mode === 'words' && dict) startDictation();   // retoma o ditado se a plataforma parou
@@ -705,6 +869,10 @@ Dicas:
   $('h-bigger').onclick = () => changeSize(4);
   $('h-mirror').onclick = toggleMirror;
   $('h-full').onclick = toggleFullscreen;
+  $('h-rec').onclick = toggleRecord;
+  $('h-flip').onclick = flipCamera;
+  $('saveVid').onclick = saveVideo;
+  $('discardVid').onclick = closeSavePanel;
   hud.addEventListener('click', showHud);
 
   $('openFile').onclick = () => $('fileInput').click();
@@ -752,6 +920,8 @@ Dicas:
 
   // ---------- Teclado ----------
   document.addEventListener('keydown', e => {
+    if (!$('savePanel').classList.contains('hidden')) return;   // painel do vídeo aberto: teclas livres
+    if (!prompter.classList.contains('hidden') && (e.key === 'r' || e.key === 'R') && s.camera && !inArtifact) { e.preventDefault(); toggleRecord(); showHud(); return; }
     if (prompter.classList.contains('hidden')) {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); openPrompter(); }
       return;
