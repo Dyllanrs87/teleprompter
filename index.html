@@ -1,0 +1,779 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>TP Roteiros</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --fg: #fff;
+    --panel: #15171c;
+    --panel-2: #1f232b;
+    --line: #2c313b;
+    --muted: #9aa3b2;
+    --accent: #3b82f6;
+    --guide: rgba(59,130,246,.18);
+    --font-size: 56px;
+    --width: 80%;
+    --line-height: 1.45;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+
+  /* ---------- Tela de edição ---------- */
+  #editor { max-width: 900px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-height: 100%; }
+  header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header.top h1 { font-size: 22px; margin: 0; letter-spacing: .3px; }
+  header.top .stats { color: var(--muted); font-size: 14px; }
+  #script { width: 100%; flex: 1; min-height: 40vh; resize: vertical; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px; font-size: 18px; line-height: 1.5; outline: none; }
+  #script:focus { border-color: var(--accent); }
+  .settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
+  .field .row { display: flex; justify-content: space-between; }
+  .field output { color: var(--fg); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; grid-column: 1 / -1; }
+  .checks label { display: flex; gap: 6px; align-items: center; font-size: 14px; cursor: pointer; }
+  .checks input { accent-color: var(--accent); width: 18px; height: 18px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; cursor: pointer; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); font-weight: 600; flex: 1; min-width: 180px; font-size: 18px; }
+  .help { color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .help kbd { background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+
+  /* ---------- Tela do prompter ---------- */
+  #prompter { position: fixed; inset: 0; background: var(--bg); overflow: hidden; }
+  #viewport { position: absolute; inset: 0; overflow-y: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #viewport::-webkit-scrollbar { display: none; }
+  #text { width: var(--width); margin: 0 auto; padding: 50vh 0 100vh; font-size: var(--font-size);
+    line-height: var(--line-height); font-weight: 600; white-space: pre-wrap; word-wrap: break-word; }
+  #text.align-center { text-align: center; }
+  #text.align-left { text-align: left; }
+  #text .cue { color: #facc15; }          /* [entre colchetes] = dica de direção */
+  #text .em  { color: #f87171; }          /* *entre asteriscos* = ênfase */
+  #text .w { transition: opacity .3s; }
+  #text .w.read { opacity: .4; }          /* palavras já lidas (modo acompanhar palavras) */
+  #mic { display: flex; align-items: center; gap: 6px; padding: 0 8px; font-size: 16px; }
+  #mic .meter { width: 48px; height: 8px; background: var(--panel-2); border-radius: 4px; position: relative; overflow: hidden; }
+  #mic .meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: #64748b; }
+  #mic .meter b { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; left: 50%; }
+  #mic.on .meter i { background: #22c55e; }
+  #mic.on .ico { filter: drop-shadow(0 0 6px #22c55e); }
+  #prompter.mirror-h #viewport { transform: scaleX(-1); }
+  #prompter.mirror-v #viewport { transform: scaleY(-1); }
+  #prompter.mirror-h.mirror-v #viewport { transform: scale(-1,-1); }
+
+  #guide { position: absolute; left: 0; right: 0; top: var(--guide-pos, 33%); height: calc(var(--font-size) * var(--line-height));
+    transform: translateY(-50%); background: var(--guide); border-top: 2px solid rgba(59,130,246,.5);
+    border-bottom: 2px solid rgba(59,130,246,.5); pointer-events: none; }
+  #guide::before, #guide::after { content: "▶"; position: absolute; top: 50%; transform: translateY(-50%); color: var(--accent); font-size: 28px; left: 6px; }
+  #guide::after { content: "◀"; left: auto; right: 6px; }
+  .fade { position: absolute; left: 0; right: 0; height: 18%; pointer-events: none; }
+  .fade.top { top: 0; background: linear-gradient(var(--bg), transparent); }
+  .fade.bottom { bottom: 0; background: linear-gradient(transparent, var(--bg)); }
+
+  #progress { position: absolute; left: 0; top: 0; height: 4px; background: var(--accent); width: 0; z-index: 3; }
+
+  #hud { position: absolute; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    display: flex; gap: 6px; align-items: center; background: rgba(21,23,28,.92); border: 1px solid var(--line);
+    border-radius: 14px; padding: 6px; z-index: 4; transition: opacity .3s; max-width: calc(100% - 16px); flex-wrap: wrap; justify-content: center; }
+  #hud.idle { opacity: 0; pointer-events: none; }
+  #hud button { background: transparent; border: 0; border-radius: 10px; min-width: 44px; height: 44px; padding: 0 10px; cursor: pointer; font-size: 18px; }
+  #hud button:hover { background: var(--panel-2); }
+  #hud .play { background: var(--accent); font-weight: 700; min-width: 64px; }
+  #hud .play:hover { background: var(--accent); filter: brightness(1.1); }
+  #hud .readout { font-size: 13px; color: var(--muted); padding: 0 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  #hud .readout b { color: var(--fg); }
+
+  #countdown { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 30vmin; font-weight: 800; color: var(--accent); background: rgba(0,0,0,.6); z-index: 5; pointer-events: none; }
+  #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(21,23,28,.95);
+    border: 1px solid var(--line); padding: 8px 16px; border-radius: 10px; font-size: 16px; z-index: 6; transition: opacity .25s; opacity: 0; pointer-events: none; }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 600px) {
+    #hud .readout { display: none; }
+    #hud button { min-width: 40px; padding: 0 6px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= EDITOR ================= -->
+<main id="editor">
+  <header class="top">
+    <h1>🎬 Teleprompter</h1>
+    <span class="stats" id="stats">0 palavras · ~0:00</span>
+  </header>
+
+  <textarea id="script" spellcheck="true" placeholder="Cole ou digite seu roteiro aqui...
+
+Dicas:
+[Texto entre colchetes] aparece em amarelo — use para indicações (pausa, sorria, mostrar produto).
+*Texto entre asteriscos* aparece em vermelho — use para ênfase."></textarea>
+
+  <section class="settings">
+    <label class="field"><span class="row">Velocidade <output id="o-speed"></output></span>
+      <input type="range" id="speed" min="1" max="20" step="1"></label>
+    <label class="field"><span>Modo de rolagem</span>
+      <select id="mode">
+        <option value="manual">Velocidade fixa</option>
+        <option value="volume">🎤 Voz: rola enquanto eu falo</option>
+        <option value="words">🎤 Voz: acompanha as palavras</option>
+      </select></label>
+    <label class="field" id="f-sens"><span class="row">Sensibilidade do microfone <output id="o-sens"></output></span>
+      <input type="range" id="sensitivity" min="0" max="100" step="5"></label>
+    <label class="field" id="f-lang"><span>Idioma da fala</span>
+      <select id="lang">
+        <option value="pt-BR">Português (Brasil)</option>
+        <option value="pt-PT">Português (Portugal)</option>
+        <option value="en-US">English (US)</option>
+        <option value="es-ES">Español</option>
+      </select></label>
+    <label class="field"><span class="row">Tamanho da fonte <output id="o-size"></output></span>
+      <input type="range" id="size" min="20" max="160" step="2"></label>
+    <label class="field"><span class="row">Largura do texto <output id="o-width"></output></span>
+      <input type="range" id="width" min="40" max="100" step="5"></label>
+    <label class="field"><span class="row">Espaçamento entre linhas <output id="o-lh"></output></span>
+      <input type="range" id="lh" min="1" max="2.2" step="0.05"></label>
+    <label class="field"><span class="row">Posição da linha de leitura <output id="o-guide"></output></span>
+      <input type="range" id="guidePos" min="15" max="60" step="1"></label>
+    <label class="field"><span>Contagem regressiva</span>
+      <select id="countdownSel">
+        <option value="0">Sem contagem</option>
+        <option value="3">3 segundos</option>
+        <option value="5">5 segundos</option>
+        <option value="10">10 segundos</option>
+      </select></label>
+    <label class="field"><span>Cores</span>
+      <select id="theme">
+        <option value="dark">Branco no preto</option>
+        <option value="light">Preto no branco</option>
+        <option value="yellow">Amarelo no preto</option>
+        <option value="green">Verde no preto</option>
+      </select></label>
+    <label class="field"><span>Alinhamento</span>
+      <select id="align">
+        <option value="left">Esquerda</option>
+        <option value="center">Centralizado</option>
+      </select></label>
+    <div class="checks">
+      <label><input type="checkbox" id="mirrorH"> Espelhar horizontal</label>
+      <label><input type="checkbox" id="mirrorV"> Inverter vertical</label>
+      <label><input type="checkbox" id="showGuide"> Linha de leitura</label>
+      <label><input type="checkbox" id="fullscreen"> Tela cheia ao iniciar</label>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button class="btn primary" id="start">▶ Iniciar leitura</button>
+    <button class="btn" id="openFile">📂 Abrir .txt</button>
+    <button class="btn" id="saveFile">💾 Salvar .txt</button>
+    <button class="btn" id="clear">🗑 Limpar</button>
+    <input type="file" id="fileInput" accept=".txt,.md,text/plain" class="hidden">
+  </div>
+
+  <p class="help">
+    <b>Atalhos durante a leitura:</b>
+    <kbd>Espaço</kbd> play/pausa ·
+    <kbd>↑</kbd><kbd>↓</kbd> velocidade ·
+    <kbd>←</kbd><kbd>→</kbd> voltar/avançar ·
+    <kbd>+</kbd><kbd>−</kbd> fonte ·
+    <kbd>M</kbd> espelhar ·
+    <kbd>Home</kbd> voltar ao início ·
+    <kbd>F</kbd> tela cheia ·
+    <kbd>Esc</kbd> sair.<br>
+    <b>No celular:</b> toque no texto para pausar/continuar, arraste para rolar manualmente.
+    O roteiro e as configurações ficam salvos automaticamente neste navegador.<br>
+    <b>Modos de voz:</b> o navegador pede permissão para usar o microfone.
+    <i>Rola enquanto eu falo</i> anda no ritmo da velocidade escolhida enquanto há voz e para no silêncio (ajuste a sensibilidade olhando o medidor 🎤).
+    <i>Acompanha as palavras</i> reconhece sua fala e mantém a próxima palavra na linha de leitura; precisa de internet e funciona no Chrome, Edge, Safari e Android.
+    Se pular um trecho, role com o dedo/roda do mouse que ele retoma dali.
+  </p>
+</main>
+
+<!-- ================= PROMPTER ================= -->
+<div id="prompter" class="hidden">
+  <div id="progress"></div>
+  <div id="viewport"><div id="text"></div></div>
+  <div class="fade top"></div>
+  <div class="fade bottom"></div>
+  <div id="guide"></div>
+  <div id="countdown" class="hidden"></div>
+  <div id="toast"></div>
+  <div id="hud">
+    <button id="h-exit" title="Sair (Esc)">✕</button>
+    <button id="h-restart" title="Início (Home)">⏮</button>
+    <button id="h-back" title="Voltar (←)">⏪</button>
+    <button id="h-play" class="play" title="Play/Pausa (Espaço)">▶</button>
+    <button id="h-fwd" title="Avançar (→)">⏩</button>
+    <button id="h-slower" title="Mais devagar (↓)">🐢</button>
+    <button id="h-faster" title="Mais rápido (↑)">🐇</button>
+    <button id="h-smaller" title="Fonte menor (−)">A−</button>
+    <button id="h-bigger" title="Fonte maior (+)">A+</button>
+    <button id="h-mirror" title="Espelhar (M)">⇋</button>
+    <button id="h-full" title="Tela cheia (F)">⛶</button>
+    <span id="mic" class="hidden" title="Microfone"><span class="ico">🎤</span><span class="meter"><i id="micLevel"></i><b id="micThr"></b></span></span>
+    <span class="readout">Vel <b id="r-speed">5</b> · <b id="r-time">0:00</b> restante</span>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const STORE = 'teleprompter.v1';
+
+  const defaults = {
+    script: '', speed: 5, size: window.innerWidth < 600 ? 34 : 56, width: window.innerWidth < 600 ? 92 : 80, lh: 1.45, guidePos: 33,
+    countdown: 3, theme: 'dark', align: 'left',
+    mirrorH: false, mirrorV: false, showGuide: true, fullscreen: true,
+    mode: 'manual', sensitivity: 60, lang: 'pt-BR'
+  };
+  const themes = {
+    dark:   { bg: '#000', fg: '#fff' },
+    light:  { bg: '#fff', fg: '#111' },
+    yellow: { bg: '#000', fg: '#fde047' },
+    green:  { bg: '#000', fg: '#4ade80' }
+  };
+
+  let s = { ...defaults };
+  try { Object.assign(s, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (e) {}
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(s)); } catch (e) {} };
+
+  // ---------- Velocidade: nível 1-20 -> pixels/segundo ----------
+  // Proporcional ao tamanho da fonte para manter o ritmo de leitura ao mudar a fonte.
+  const pxPerSec = () => s.speed * s.size * 0.09;
+  const WPM_PER_LEVEL = 30; // estimativa grosseira para o "tempo estimado"
+
+  // ---------- Elementos ----------
+  const ed = {
+    script: $('script'), speed: $('speed'), size: $('size'), width: $('width'), lh: $('lh'),
+    guidePos: $('guidePos'), countdown: $('countdownSel'), theme: $('theme'), align: $('align'),
+    mirrorH: $('mirrorH'), mirrorV: $('mirrorV'), showGuide: $('showGuide'), fullscreen: $('fullscreen'),
+    mode: $('mode'), sensitivity: $('sensitivity'), lang: $('lang')
+  };
+  const prompter = $('prompter'), viewport = $('viewport'), text = $('text'), hud = $('hud');
+
+  function fmtTime(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60), r = sec % 60;
+    return m + ':' + String(r).padStart(2, '0');
+  }
+  function wordCount(t) { return (t.trim().match(/\S+/g) || []).length; }
+
+  function applyStyle() {
+    const root = document.documentElement.style;
+    root.setProperty('--font-size', s.size + 'px');
+    root.setProperty('--width', s.width + '%');
+    root.setProperty('--line-height', s.lh);
+    root.setProperty('--guide-pos', s.guidePos + '%');
+    const th = themes[s.theme] || themes.dark;
+    prompter.style.setProperty('--bg', th.bg);
+    prompter.style.color = th.fg;
+    text.className = 'align-' + s.align;
+    prompter.classList.toggle('mirror-h', s.mirrorH);
+    prompter.classList.toggle('mirror-v', s.mirrorV);
+    $('guide').classList.toggle('hidden', !s.showGuide);
+    $('o-speed').textContent = s.speed;
+    $('o-size').textContent = s.size + 'px';
+    $('o-width').textContent = s.width + '%';
+    $('o-lh').textContent = Number(s.lh).toFixed(2);
+    $('o-guide').textContent = s.guidePos + '%';
+    $('r-speed').textContent = s.speed;
+    $('o-sens').textContent = s.sensitivity;
+    $('f-sens').classList.toggle('hidden', s.mode !== 'volume');
+    $('f-lang').classList.toggle('hidden', s.mode !== 'words');
+    $('mic').classList.toggle('hidden', s.mode === 'manual');
+    $('micThr').style.left = (100 - s.sensitivity) + '%';
+    $('mic').querySelector('.meter').style.display = s.mode === 'volume' ? '' : 'none';
+  }
+
+  function updateStats() {
+    const w = wordCount(s.script);
+    const min = w / (s.speed * WPM_PER_LEVEL);
+    $('stats').textContent = `${w} palavras · ~${fmtTime(min * 60)} na velocidade ${s.speed}`;
+  }
+
+  function loadForm() {
+    for (const k in ed) {
+      const el = ed[k];
+      if (el.type === 'checkbox') el.checked = !!s[k];
+      else el.value = s[k];
+    }
+    applyStyle(); updateStats();
+  }
+
+  for (const k in ed) {
+    const el = ed[k];
+    el.addEventListener('input', () => {
+      if (el.type === 'checkbox') s[k] = el.checked;
+      else if (el.type === 'range' || k === 'countdown') s[k] = Number(el.value);
+      else s[k] = el.value;
+      applyStyle(); updateStats(); save();
+    });
+  }
+
+  // ---------- Renderização do texto ----------
+  function escapeHtml(t) {
+    return t.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  // Normaliza palavra para comparação com a fala: minúsculas, sem acento, sem pontuação
+  const norm = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/['’\-]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  // Cada palavra falável vira <span class="w">; [dicas] ficam fora (não são lidas em voz alta)
+  let words = [];
+  function wrapWords(t) {
+    return t.split(/(\s+)/).map(tok => {
+      if (!tok || /^\s+$/.test(tok)) return tok;
+      return norm(tok) ? `<span class="w">${escapeHtml(tok)}</span>` : escapeHtml(tok);
+    }).join('');
+  }
+  function renderScript() {
+    const src = s.script || 'Seu roteiro aparecerá aqui.';
+    let html = '';
+    const re = /\[([^\]\n]+)\]|\*([^*\n]+)\*/g;
+    let i = 0, m;
+    while ((m = re.exec(src))) {
+      html += wrapWords(src.slice(i, m.index));
+      html += m[1] !== undefined ? `<span class="cue">[${escapeHtml(m[1])}]</span>` : `<span class="em">${wrapWords(m[2])}</span>`;
+      i = re.lastIndex;
+    }
+    html += wrapWords(src.slice(i));
+    text.innerHTML = html;
+    words = Array.from(text.querySelectorAll('.w')).map(el => ({ el, n: norm(el.textContent).split(' ')[0] }));
+    setCur(0);
+  }
+
+  // ---------- Motor de rolagem ----------
+  let playing = false, pos = 0, last = 0, raf = 0, countdownTimer = 0;
+  let vel = 0;        // velocidade atual (suavizada) em px/s
+  let lastSet = 0;    // último scrollTop definido pelo próprio motor (para detectar rolagem manual)
+
+  const maxScroll = () => viewport.scrollHeight - viewport.clientHeight;
+  // posição em que o texto termina de passar pela linha de leitura
+  const endScroll = () => Math.max(0, maxScroll() - viewport.clientHeight * 0.5);
+  const guideY = () => viewport.clientHeight * s.guidePos / 100;
+
+  function tick(t) {
+    if (!playing) return;
+    const dt = Math.min(0.1, (t - last) / 1000);
+    last = t;
+    const end = endScroll();
+    const heard = voiceActive();
+    if (s.mode === 'words') {
+      // desliza suavemente até deixar a próxima palavra na linha de leitura
+      pos += (Math.min(end, wordTarget()) - pos) * Math.min(1, dt * 3);
+    } else {
+      const want = s.mode === 'volume' && !heard ? 0 : pxPerSec();
+      vel += (want - vel) * Math.min(1, dt * (want ? 4 : 8));
+      pos += vel * dt;
+    }
+    if (pos >= end) {
+      pos = end;
+      if (s.mode !== 'words' || cur >= words.length) { setPlaying(false); toast('Fim do roteiro'); }
+    }
+    viewport.scrollTop = pos; lastSet = viewport.scrollTop;
+    updateReadout();
+    if (playing) raf = requestAnimationFrame(tick);
+  }
+
+  // ---------- Voz: medidor de volume ----------
+  let audioCtx = null, analyser = null, micStream = null, levelBuf = null, lastVoice = 0;
+  async function startMic() {
+    if (analyser) return true;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();   // criado no clique (exigência do iOS)
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      await audioCtx.resume();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      audioCtx.createMediaStreamSource(micStream).connect(analyser);
+      levelBuf = new Float32Array(analyser.fftSize);
+      return true;
+    } catch (e) {
+      toast('Não foi possível acessar o microfone');
+      stopMic();
+      return false;
+    }
+  }
+  function stopMic() {
+    try { micStream && micStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    try { audioCtx && audioCtx.close(); } catch (e) {}
+    audioCtx = analyser = micStream = null;
+  }
+  // Retorna true se houve voz nos últimos ~0,7 s; atualiza o medidor 🎤
+  function voiceActive() {
+    if (s.mode === 'manual') return false;
+    let level = 0;
+    if (analyser) {
+      analyser.getFloatTimeDomainData(levelBuf);
+      let sum = 0;
+      for (let i = 0; i < levelBuf.length; i++) sum += levelBuf[i] * levelBuf[i];
+      const rms = Math.sqrt(sum / levelBuf.length);
+      level = Math.min(1, Math.sqrt(rms / 0.12));   // escala raiz: medidor mais legível para voz
+      // limiar na mesma escala do medidor: sensibilidade 100 = qualquer som, 0 = só fala bem alta
+      if (s.mode === 'volume' && level > (100 - s.sensitivity) / 100) lastVoice = performance.now();
+    }
+    const on = performance.now() - lastVoice < 700;
+    $('micLevel').style.width = (level * 100) + '%';
+    $('mic').classList.toggle('on', on);
+    return on;
+  }
+
+  // ---------- Voz: reconhecimento de palavras ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, recWanted = false, cur = 0;   // cur = índice da próxima palavra a ser lida
+
+  function setCur(n) {
+    n = Math.max(0, Math.min(words.length, n));
+    const [a, b] = n > cur ? [cur, n] : [n, cur];
+    for (let i = a; i < b; i++) words[i] && words[i].el.classList.toggle('read', i < n && s.mode === 'words');
+    cur = n;
+  }
+  function wordTarget() {
+    const w = words[Math.min(cur, words.length - 1)];
+    if (!w || cur === 0) return 0;
+    return Math.max(0, w.el.offsetTop + w.el.offsetHeight / 2 - guideY());
+  }
+  function wordAtGuide() {
+    const y = viewport.scrollTop + guideY();
+    for (let i = 0; i < words.length; i++) {
+      const el = words[i].el;
+      if (el.offsetTop + el.offsetHeight >= y) return i;
+    }
+    return words.length;
+  }
+  const same = (a, b) => a === b || (a.length >= 4 && b.length >= 4 && (a.startsWith(b) || b.startsWith(a)));
+
+  // Encontra no roteiro (perto da posição atual) o trecho que casa com as últimas palavras faladas
+  function onSpoken(transcript) {
+    lastVoice = performance.now();
+    if (!playing || !words.length) return;
+    const spoken = norm(transcript).split(' ').filter(Boolean).slice(-6);
+    if (!spoken.length) return;
+    const lo = Math.max(0, cur - 4), hi = Math.min(words.length - 1, cur + 25);
+    let best = -1, bestVal = -1;
+    for (let j = lo; j <= hi; j++) {
+      let score = 0;
+      for (let k = 0; k < spoken.length && j - k >= 0; k++) {
+        if (same(spoken[spoken.length - 1 - k], words[j - k].n)) score += k === 0 ? 1.5 : 1;
+      }
+      const enough = score >= 2 || (spoken.length === 1 && score >= 1.5 && j <= cur + 2);
+      const val = score - Math.abs(j - cur) * 0.03;
+      if (enough && val > bestVal) { bestVal = val; best = j; }
+    }
+    if (best >= 0) setCur(best + 1);
+  }
+
+  // No link publicado (claude.ai) o microfone vem do recurso de ditado da plataforma
+  const inArtifact = !!(window.claude && window.claude.use);
+  let dict = null, dl = null, dictText = '';
+  if (inArtifact) {
+    window.claude.use('dictation').then(d => {
+      dict = d;
+      if (!d) return;
+      d.onFinal(({ text }) => { dictText = (dictText + text).slice(-400); onSpoken(dictText); });
+      d.onPartial(({ text }) => { if (text) onSpoken(dictText + ' ' + text); });
+      d.onState(({ state, reason }) => {
+        if (state !== 'idle' || prompter.classList.contains('hidden')) return;
+        if (reason === 'hidden' || reason === 'time_limit' || reason === 'viewer_stopped') toast('Microfone parado: toque em ▶ para voltar a ouvir');
+        else if (reason === 'not_granted') toast('Ditado bloqueado: libere no menu Permissões do artefato');
+        else if (reason === 'unavailable') toast('Ditado indisponível para esta conta ou idioma');
+        else if (reason === 'rate_limited' || reason === 'upstream_error') toast('Falha no reconhecimento de voz, toque em ▶ para tentar de novo');
+      });
+    }).catch(() => {});
+    window.claude.use('downloads').then(x => { dl = x; }).catch(() => {});
+    // Sem acesso direto ao microfone no link: o modo por volume só funciona no arquivo local
+    const opt = ed.mode.querySelector('option[value="volume"]');
+    opt.disabled = true; opt.textContent += ' (só no arquivo local)';
+    if (s.mode === 'volume') { s.mode = 'manual'; ed.mode.value = 'manual'; applyStyle(); }
+  }
+
+  function startDictation() {
+    if (!dict || dict.active()) return;
+    dict.start({ language: s.lang.slice(0, 2) }).catch(e => {
+      if (e && e.code === 'not_granted') toast('Ditado bloqueado: libere no menu Permissões do artefato');
+      else if (e && e.code === 'unavailable') toast('Ditado indisponível neste navegador; use Chrome ou Edge');
+    });
+  }
+
+  function startRecognition() {
+    if (inArtifact) {
+      if (!dict) { toast('Voz indisponível aqui: use Chrome/Edge no computador ou Chrome no Android'); return false; }
+      startDictation();   // chamado direto do clique, como o ditado exige
+      return true;
+    }
+    if (!SR) { toast('Este navegador não reconhece fala — use Chrome, Edge ou Safari'); return false; }
+    if (rec) return true;
+    rec = new SR();
+    rec.lang = s.lang; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = e => {
+      let txt = '';
+      for (let i = 0; i < e.results.length; i++) txt += ' ' + e.results[i][0].transcript;
+      onSpoken(txt);
+    };
+    rec.onerror = e => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { recWanted = false; toast('Microfone bloqueado pelo navegador'); }
+      else if (e.error === 'network') toast('Reconhecimento de voz precisa de internet');
+    };
+    rec.onend = () => { if (recWanted) { try { rec.start(); } catch (e) {} } else rec = null; };
+    recWanted = true;
+    try { rec.start(); } catch (e) {}
+    return true;
+  }
+  function stopRecognition() {
+    if (dict) { dict.stop().catch(() => {}); dictText = ''; }
+    recWanted = false;
+    try { rec && rec.abort(); } catch (e) {}
+    rec = null;
+  }
+
+  function startVoice() {
+    // Só um dos dois usa o microfone: no Android, abrir os dois ao mesmo tempo pode travar o reconhecimento
+    if (s.mode === 'volume') startMic();
+    if (s.mode === 'words') startRecognition();
+  }
+  function stopVoice() { stopRecognition(); stopMic(); }
+
+  function setPlaying(p) {
+    if (p === playing) return;
+    playing = p;
+    $('h-play').textContent = p ? '❚❚' : '▶';
+    if (p) {
+      pos = viewport.scrollTop;
+      if (pos >= endScroll() - 1 && (s.mode !== 'words' || cur >= words.length)) { pos = 0; viewport.scrollTop = 0; setCur(0); }
+      lastSet = viewport.scrollTop;
+      vel = 0;
+      last = performance.now();
+      raf = requestAnimationFrame(tick);
+      requestWakeLock();
+      scheduleHudHide();
+    } else {
+      cancelAnimationFrame(raf);
+      showHud();
+    }
+  }
+
+  function togglePlay() {
+    if (countdownTimer) { cancelCountdown(); return; }
+    if (playing) setPlaying(false);
+    else {
+      if (s.mode === 'words' && dict) startDictation();   // retoma o ditado se a plataforma parou
+      startWithCountdown();
+    }
+  }
+
+  function startWithCountdown() {
+    const n = s.countdown;
+    if (!n) { setPlaying(true); return; }
+    const cd = $('countdown');
+    let left = n;
+    cd.textContent = left; cd.classList.remove('hidden');
+    showHud();
+    countdownTimer = setInterval(() => {
+      left--;
+      if (left <= 0) { cancelCountdown(); setPlaying(true); }
+      else cd.textContent = left;
+    }, 1000);
+  }
+  function cancelCountdown() {
+    clearInterval(countdownTimer); countdownTimer = 0;
+    $('countdown').classList.add('hidden');
+  }
+
+  function jump(px) {
+    pos = Math.min(endScroll(), Math.max(0, viewport.scrollTop + px));
+    viewport.scrollTop = pos;
+    updateReadout();
+  }
+
+  function updateReadout() {
+    const end = endScroll();
+    const p = end ? Math.min(1, viewport.scrollTop / end) : 0;
+    $('progress').style.width = (p * 100) + '%';
+    $('r-time').textContent = fmtTime((end - viewport.scrollTop) / pxPerSec());
+  }
+
+  // Rolagem manual (roda/toque/barra), inclusive enquanto toca: adota a nova posição e continua
+  // No modo palavras, retoma o acompanhamento a partir do ponto para onde você rolou.
+  viewport.addEventListener('scroll', () => {
+    if (Math.abs(viewport.scrollTop - lastSet) <= 3) return;   // fomos nós que rolamos
+    pos = lastSet = viewport.scrollTop;
+    if (s.mode === 'words') setCur(wordAtGuide());
+    updateReadout();
+  });
+
+  function changeSpeed(d) {
+    s.speed = Math.min(20, Math.max(1, s.speed + d));
+    ed.speed.value = s.speed; applyStyle(); updateStats(); save();
+    toast('Velocidade ' + s.speed);
+  }
+  function changeSize(d) {
+    const ratio = viewport.scrollTop / (viewport.scrollHeight || 1);
+    s.size = Math.min(160, Math.max(20, s.size + d));
+    ed.size.value = s.size; applyStyle(); save();
+    viewport.scrollTop = pos = ratio * viewport.scrollHeight;
+    toast('Fonte ' + s.size + 'px');
+  }
+  function toggleMirror() {
+    s.mirrorH = !s.mirrorH; ed.mirrorH.checked = s.mirrorH; applyStyle(); save();
+    toast(s.mirrorH ? 'Espelhado' : 'Normal');
+  }
+
+  // ---------- Abrir / sair ----------
+  function openPrompter() {
+    renderScript(); applyStyle();
+    $('editor').classList.add('hidden');
+    prompter.classList.remove('hidden');
+    viewport.scrollTop = pos = lastSet = 0;
+    updateReadout(); showHud();
+    if (s.fullscreen) enterFullscreen();
+    startVoice();
+    startWithCountdown();
+  }
+  function closePrompter() {
+    setPlaying(false); cancelCountdown(); releaseWakeLock(); stopVoice();
+    prompter.classList.add('hidden');
+    $('editor').classList.remove('hidden');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+
+  function enterFullscreen() {
+    const el = document.documentElement;
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => Promise.reject())).call(el)?.catch?.(() => {});
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    } else enterFullscreen();
+  }
+
+  // ---------- Manter a tela ligada ----------
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } } catch (e) {}
+  }
+  function releaseWakeLock() { try { wakeLock && wakeLock.release(); } catch (e) {} wakeLock = null; }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && !prompter.classList.contains('hidden')) requestWakeLock();
+  });
+
+  // ---------- HUD ----------
+  let hudTimer = 0;
+  function showHud() { hud.classList.remove('idle'); scheduleHudHide(); }
+  function scheduleHudHide() {
+    clearTimeout(hudTimer);
+    if (playing) hudTimer = setTimeout(() => hud.classList.add('idle'), 2500);
+  }
+  prompter.addEventListener('mousemove', showHud);
+
+  let toastTimer = 0;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1000);
+  }
+
+  // Toque no texto: alterna play/pausa (ignora arrastar)
+  let touchY = 0, moved = false;
+  viewport.addEventListener('touchstart', e => { touchY = e.touches[0].clientY; moved = false; }, { passive: true });
+  viewport.addEventListener('touchmove', e => {
+    if (Math.abs(e.touches[0].clientY - touchY) > 10) moved = true;
+  }, { passive: true });
+  viewport.addEventListener('click', () => { if (!moved) { togglePlay(); showHud(); } moved = false; });
+
+  // ---------- Botões ----------
+  $('start').onclick = openPrompter;
+  $('h-exit').onclick = closePrompter;
+  $('h-play').onclick = togglePlay;
+  $('h-restart').onclick = () => { jump(-1e9); toast('Início'); };
+  $('h-back').onclick = () => jump(-viewport.clientHeight * 0.3);
+  $('h-fwd').onclick = () => jump(viewport.clientHeight * 0.3);
+  $('h-slower').onclick = () => changeSpeed(-1);
+  $('h-faster').onclick = () => changeSpeed(1);
+  $('h-smaller').onclick = () => changeSize(-4);
+  $('h-bigger').onclick = () => changeSize(4);
+  $('h-mirror').onclick = toggleMirror;
+  $('h-full').onclick = toggleFullscreen;
+  hud.addEventListener('click', showHud);
+
+  $('openFile').onclick = () => $('fileInput').click();
+  $('fileInput').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { s.script = r.result; ed.script.value = s.script; updateStats(); save(); };
+    r.readAsText(f, 'utf-8');
+    e.target.value = '';
+  };
+  $('saveFile').onclick = () => {
+    if (inArtifact) {
+      if (dl) dl.save({ filename: 'roteiro.txt', data: s.script || ' ' }).catch(() => {});
+      return;
+    }
+    const blob = new Blob([s.script], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'roteiro.txt';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  // Confirmação em dois cliques (o link publicado não exibe janelas de confirmação)
+  let clearArmed = 0;
+  $('clear').onclick = () => {
+    const b = $('clear');
+    if (s.script && !clearArmed) {
+      b.textContent = '⚠ Clique de novo para apagar';
+      clearArmed = setTimeout(() => { clearArmed = 0; b.textContent = '🗑 Limpar'; }, 3000);
+      return;
+    }
+    clearTimeout(clearArmed); clearArmed = 0; b.textContent = '🗑 Limpar';
+    s.script = ''; ed.script.value = ''; updateStats(); save();
+  };
+
+  // Arrastar e soltar arquivo .txt no editor
+  ed.script.addEventListener('dragover', e => e.preventDefault());
+  ed.script.addEventListener('drop', e => {
+    const f = e.dataTransfer.files[0];
+    if (f && /text|\.txt$|\.md$/i.test(f.type + f.name)) {
+      e.preventDefault();
+      f.text().then(t => { s.script = t; ed.script.value = t; updateStats(); save(); });
+    }
+  });
+
+  // ---------- Teclado ----------
+  document.addEventListener('keydown', e => {
+    if (prompter.classList.contains('hidden')) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); openPrompter(); }
+      return;
+    }
+    const k = e.key;
+    const handled = {
+      ' ': togglePlay, 'Enter': togglePlay, 'k': togglePlay,
+      'ArrowUp': () => changeSpeed(1), 'ArrowDown': () => changeSpeed(-1),
+      'ArrowLeft': () => jump(-viewport.clientHeight * 0.3), 'ArrowRight': () => jump(viewport.clientHeight * 0.3),
+      'PageUp': () => jump(-viewport.clientHeight * 0.8), 'PageDown': () => jump(viewport.clientHeight * 0.8),
+      '+': () => changeSize(4), '=': () => changeSize(4), '-': () => changeSize(-4),
+      'Home': () => jump(-1e9), 'm': toggleMirror, 'M': toggleMirror,
+      'f': toggleFullscreen, 'F': toggleFullscreen,
+      'Escape': () => { if (!document.fullscreenElement) closePrompter(); }
+    }[k];
+    if (handled) { e.preventDefault(); handled(); showHud(); }
+  });
+
+  window.addEventListener('resize', () => { if (!playing) updateReadout(); });
+
+  loadForm();
+})();
+</script>
+</body>
+</html>
